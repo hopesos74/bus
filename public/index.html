@@ -117,17 +117,11 @@ async function loadAll() {
 
   for (const station of stations) {
     // 🔽 이 부분을 수정합니다.
-    const res = await fetch(`/bus?mode=BUS_ARRIVAL&keyword=${station.id}&menu=4&smenu=1&lobs=`, {
-      headers: {
-        "ngrok-skip-browser-warning": "true" // 아무 값이나 넣으면 경고창이 사라집니다.
-      }
-    });
-    
-    const xmlStr = await res.text();
+   
 
-    /*
+    
     const res = await fetch(`/bus?mode=BUS_ARRIVAL&keyword=${station.id}&menu=4&smenu=1&lobs=`);
-    const xmlStr = await res.text();  */
+    const xmlStr = await res.text();  
 
     const parser = new DOMParser();
     const xml = parser.parseFromString(xmlStr, "text/xml");
