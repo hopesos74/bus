@@ -1,6 +1,7 @@
 
 const express = require("express");
 const path = require("path");
+const fetch = require("node-fetch");
 // node-fetch가 내장되지 않은 구버전 노드일 경우 설치가 필요할 수 있습니다.
 // 최신 Node 환경이라면 전역 fetch를 지원합니다.
 
