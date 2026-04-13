@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>주변 김해 버스 도착 정보</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+ body { background: #f0f2f5; font-family: -apple-system, sans-serif; margin: 0; padding: 15px; }
+ #container { display: flex; flex-direction: column; gap: 20px; }
+
+ .stationBox {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+ }
+
+ .stationHeader { color: white; padding: 15px; }
+ .blue { background: #2f7f95; }
+ .green { background: #34c759; }
+ .orange { background: #ff9500; }
+
+ .stationTitle { font-weight: bold; font-size: 15px; line-height: 1.4; }
+
+ #updateGlobal { text-align: center; margin-bottom: 15px; font-weight: bold; color: #555; font-size: 14px; }
+
+ table { width: 100%; border-collapse: collapse; }
+ th { background: #f8f8f8; padding: 10px; font-size: 13px; color: #777; border-bottom: 1px solid #eee; }
+ td { padding: 12px 10px; text-align: center; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+ 
+ tr:last-child td { border-bottom: none; }
+ .fast { color: #ff3b30; font-weight: bold; }
+ .slow { color: #007aff; font-weight: bold; }
+ .gray { color: #999; }
+ .empty { padding: 20px; color: #bbb; font-size: 13px; text-align: center; }
+</style>
+</head>
+
+<body>
+
+<div id="updateGlobal">주변 김해 정류소를 검색 중입니다...</div>
+<div id="container"></div>
+
+<script>
+// 1. 설정 및 상태
+const SERVICE_KEY = 'l%2FzPvuFgDbYOsgQY1kCLbjHytfR1nkkyR2KZVENTPtDNQR4AD0jG%2BvGf2fBA052nrh0HF4QJW%2FMFXxt2HKP5sg%3D%3D';
+const TARGET_BUSES = []; // 비어있으면 모든 버스를 표시
+
+function formatTime() {
+  return new Date().toLocaleTimeString("ko-KR");
+}
+
+function getClass(time) {
+  if (!time || time.includes("종료")) return "gray";
+  if (time.includes("곧")) return "fast";
+  const num = time.match(/\d+/);
+  if (!num) return "gray";
+  const min = parseInt(num[0]);
+  return min <= 3 ? "fast" : (min <= 10 ? "slow" : "gray");
+}
+
+// 브라우저 GPS 위치 획득
+function getMyLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("이 브라우저는 위치 정보를 지원하지 않습니다."));
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => reject(err),
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  });
+}
+
+// 주변 정류장 정보 획득 (김해시 38070 필터링)
+async function getNearbyStations(lat, lng) {
+  const url = `https://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=${SERVICE_KEY}&pageNo=1&numOfRows=15&_type=json&gpsLati=${lat}&gpsLong=${lng}`;
+  
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    console.log(data)
+    const items = data.response.body.items.item || [];
+
+    // 김해시(38070) 데이터만 필터링 및 nodeno 존재 확인
+    const gimhaeStations = (Array.isArray(items) ? items : [items]).filter(item => 
+      String(item.citycode) === "38070" && item.nodeno
+    );
+
+    return gimhaeStations.slice(0, 5); // 상위 5개 반환
+  } catch (e) {
+    console.error("API 호출 오류:", e);
+    return [];
+  }
+}
+
+async function loadNearbyAll() {
+  try {
+    const myPos = await getMyLocation();
+    const stations = await getNearbyStations(myPos.lat, myPos.lng);
+    
+    if (stations.length === 0) {
+      document.getElementById("updateGlobal").innerText = "주변에 김해시 정류소가 없습니다.";
+      return;
+    }
+
+    const container = document.getElementById("container");
+    const colors = ["blue", "green", "orange"];
+    document.getElementById("updateGlobal").innerText = "마지막 업데이트: " + formatTime();
+
+    for (let i = 0; i < stations.length; i++) {
+      const st = stations[i];
+      // 김해 정류소 ID 체계 적용 (nodeno - 1000)
+      const stationId = parseInt(st.nodeno) - 1000;
+      const color = colors[i % colors.length];
+
+      const res = await fetch(`/bus?mode=BUS_ARRIVAL&keyword=${stationId}&menu=4&smenu=1&lobs=`);
+      const xmlStr = await res.text();
+      const xml = new DOMParser().parseFromString(xmlStr, "text/xml");
+      const bData = xml.getElementsByTagName("b_data")[0];
+
+      if (!bData) continue;
+
+      const name = bData.getAttribute("d3");
+      const dir = bData.getAttribute("d7");
+      const displayId = bData.getAttribute("d8");
+
+      let box = document.getElementById(`station-${stationId}`);
+      if (!box) {
+        box = document.createElement("div");
+        box.id = `station-${stationId}`;
+        box.className = "stationBox";
+        container.appendChild(box);
+      }
+
+      box.innerHTML = `
+        <div class="stationHeader ${color}">
+          <div class="stationTitle">📍 ${name} (${displayId}) → ${dir} 방향</div>
+        </div>
+        <table>
+          <thead><tr><th>노선</th><th>도착예정</th><th>현재위치</th><th>종점</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      `;
+
+      const tbody = box.querySelector("tbody");
+      const items = xml.getElementsByTagName("data");
+      let hasData = false;
+
+      Array.from(items).forEach(item => {
+        const bus = item.getAttribute("d1");
+        if (TARGET_BUSES.length > 0 && !TARGET_BUSES.includes(bus)) return;
+
+        hasData = true;
+        const time = item.getAttribute("d4") || "정보없음";
+        const loc = item.getAttribute("d3") || "-";
+        const dest = item.getAttribute("d5") || "-";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><strong>${bus}</strong></td>
+          <td class="${getClass(time)}">${time}</td>
+          <td>${loc}</td>
+          <td>${dest}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      if (!hasData) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">현재 도착 예정인 버스가 없습니다.</td></tr>';
+      }
+    }
+  } catch (e) {
+    console.error(e);
+    document.getElementById("updateGlobal").innerText = "위치 정보 또는 데이터를 불러올 수 없습니다.";
+  }
+}
+
+// 즉시 실행 및 15초 주기 업데이트
+loadNearbyAll();
+setInterval(loadNearbyAll, 15000);
+</script>
+
+</body>
+</html>
