@@ -1,9 +1,9 @@
+
 const express = require("express");
 const fetch = require("node-fetch");
 const app = express();
 
-// 🚌 김해 버스 API 프록시
-app.get("/api/bus", async (req, res) => {
+app.get("/api/bus", async (req, res) => { // Vercel 내부 경로는 /api/bus 권장
   try {
     const params = new URLSearchParams(req.query).toString();
     const url = `https://bus.gimhae.go.kr/ver5/map/ajax_get_data.php?${params}`;
@@ -20,4 +20,5 @@ app.get("/api/bus", async (req, res) => {
   }
 });
 
-module.exports = app; // 👈 Vercel을 위해 필수!
+// app.listen 코드는 삭제하거나 주석 처리하세요.
+module.exports = app;
