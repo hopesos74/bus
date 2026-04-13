@@ -1,37 +1,42 @@
 const express = require("express");
-const https = require("https"); // 더 안정적인 연결을 위해 기본 모듈 사용
+const https = require("https");
 const app = express();
 
 app.get("*", async (req, res) => {
+  // 1. 요청 파라미터 구성
+  const params = new URLSearchParams(req.query).toString();
+  const url = `https://bus.gimhae.go.kr/ver5/map/ajax_get_data.php?${params}`;
+
   try {
-    const params = new URLSearchParams(req.query).toString();
-    const url = `https://bus.gimhae.go.kr/ver5/map/ajax_get_data.php?${params}`;
+    // 2. Promise를 사용하여 데이터가 다 올 때까지 기다림 (Timeout 방지)
+    const fetchData = () => {
+      return new Promise((resolve, reject) => {
+        const request = https.get(url, { timeout: 5000 }, (apiRes) => {
+          let data = [];
+          apiRes.on('data', (chunk) => data.push(chunk));
+          apiRes.on('end', () => resolve(Buffer.concat(data)));
+        });
 
-    // 김해시 서버에 데이터 요청
-    https.get(url, (apiRes) => {
-      let data = [];
-
-      apiRes.on('data', (chunk) => {
-        data.push(chunk);
+        request.on('error', (err) => reject(err));
+        request.on('timeout', () => {
+          request.destroy();
+          reject(new Error("Gimhae Server Timeout"));
+        });
       });
+    };
 
-      apiRes.on('end', () => {
-        const buffer = Buffer.concat(data);
-        const decoder = new (require('util').TextDecoder)("euc-kr");
-        const text = decoder.decode(buffer);
-        
-        res.setHeader("Content-Type", "text/xml; charset=utf-8");
-        res.setHeader("Access-Control-Allow-Origin", "*"); // CORS 허용
-        res.send(text);
-      });
+    const buffer = await fetchData();
+    const decoder = new (require('util').TextDecoder)("euc-kr");
+    const text = decoder.decode(buffer);
 
-    }).on("error", (err) => {
-      throw new Error("김해 서버 연결 실패: " + err.message);
-    });
+    // 3. 응답 전송
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.send(text);
 
   } catch (err) {
     console.error("Server Error:", err.message);
-    res.status(500).json({ error: "fetch failed", details: err.message });
+    res.status(504).json({ error: "Gateway Timeout", details: err.message });
   }
 });
 
