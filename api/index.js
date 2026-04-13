@@ -1,5 +1,5 @@
 const express = require("express");
-const fetch = require("node-fetch");
+//const fetch = require("node-fetch");
 const app = express();
 
 // 💡 중요: app.get("/api/bus") 대신 "*"를 사용하여 모든 요청을 수용합니다.
